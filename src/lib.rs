@@ -1,11 +1,12 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{WebGl2RenderingContext, WebGlProgram, WebGlShader};
+use web_sys::{HtmlCanvasElement, WebGl2RenderingContext, WebGlProgram, WebGlShader};
 
 #[wasm_bindgen(start)]
 fn start() -> Result<(), JsValue> {
-    let document = web_sys::window().unwrap().document().unwrap();
-    let canvas = document.get_element_by_id("canvas").unwrap();
+    let window: web_sys::Window = web_sys::window().unwrap();
+    let canvas = window.document().unwrap().get_element_by_id("canvas").unwrap();
     let canvas: web_sys::HtmlCanvasElement = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
+    resize_canvas_to_fill_screen(&canvas, &window);
 
     let context = canvas
         .get_context("webgl2")?
@@ -17,11 +18,11 @@ fn start() -> Result<(), JsValue> {
         WebGl2RenderingContext::VERTEX_SHADER,
         r##"#version 300 es
  
-        in vec4 position;
+        in vec2 position;
 
         void main() {
-        
-            gl_Position = position;
+            gl_Position = vec4(position, 0.0, 1.0);
+            gl_PointSize = 64.0;
         }
         "##,
     )?;
@@ -35,14 +36,14 @@ fn start() -> Result<(), JsValue> {
         out vec4 outColor;
         
         void main() {
-            outColor = vec4(1, 1, 1, 1);
+            outColor = vec4(1, 0, 1, 1);
         }
         "##,
     )?;
     let program = link_program(&context, &vert_shader, &frag_shader)?;
     context.use_program(Some(&program));
 
-    let vertices: [f32; 9] = [-0.7, -0.7, 0.0, 0.7, -0.7, 0.0, 0.0, 0.7, 0.0];
+    let vertices: [f32; 2] = [-0.7, 0.7];
 
     let position_attribute_location = context.get_attrib_location(&program, "position");
     let buffer = context.create_buffer().ok_or("Failed to create buffer")?;
@@ -62,7 +63,7 @@ fn start() -> Result<(), JsValue> {
         context.buffer_data_with_array_buffer_view(
             WebGl2RenderingContext::ARRAY_BUFFER,
             &positions_array_buf_view,
-            WebGl2RenderingContext::STATIC_DRAW,
+            WebGl2RenderingContext::DYNAMIC_DRAW,
         );
     }
 
@@ -73,7 +74,7 @@ fn start() -> Result<(), JsValue> {
 
     context.vertex_attrib_pointer_with_i32(
         position_attribute_location as u32,
-        3,
+        2,
         WebGl2RenderingContext::FLOAT,
         false,
         0,
@@ -83,17 +84,30 @@ fn start() -> Result<(), JsValue> {
 
     context.bind_vertex_array(Some(&vao));
 
-    let vert_count = (vertices.len() / 3) as i32;
+    let vert_count = vertices.len() as i32;
     draw(&context, vert_count);
 
     Ok(())
 }
 
+fn resize_canvas_to_fill_screen(canvas: &HtmlCanvasElement, window: &web_sys::Window) {
+    let window_height: u32 = window.inner_height().unwrap().as_f64().unwrap() as u32;
+    let screen_width: u32 = window.inner_width().unwrap().as_f64().unwrap() as u32;
+    let canvas_width: u32 = canvas.width();
+    let canvas_height: u32 = canvas.height();
+    let need_resize: bool = screen_width != canvas_width || window_height != canvas_height;
+    
+    if need_resize {
+        canvas.set_height(window_height);
+        canvas.set_width(screen_width);
+    }
+}
+
 fn draw(context: &WebGl2RenderingContext, vert_count: i32) {
-    context.clear_color(0.0, 0.0, 0.0, 1.0);
+    context.clear_color(0.0, 1.0, 0.0, 1.0);
     context.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
 
-    context.draw_arrays(WebGl2RenderingContext::TRIANGLES, 0, vert_count);
+    context.draw_arrays(WebGl2RenderingContext::POINTS, 0, 1);
 }
 
 pub fn compile_shader(
